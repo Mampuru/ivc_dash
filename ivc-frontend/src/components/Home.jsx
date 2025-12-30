@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, FileText, X, Save, Search } from 'lucide-react';
 
-export default function InvoiceApp() {
+export default function Home() {
   const [customers, setCustomers] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [activeTab, setActiveTab] = useState('customers');
