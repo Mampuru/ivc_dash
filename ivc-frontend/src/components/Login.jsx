@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
+import { supabase } from "../config/supabase";
 
 const Login = () => {
   const [email, setEmail] = useState("");

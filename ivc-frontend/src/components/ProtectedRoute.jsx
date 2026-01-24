@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
+import { supabase } from "../config/supabase";
 
 export default function ProtectedRoute({ children }) {
   const [loading, setLoading] = useState(true);
@@ -7,21 +8,21 @@ export default function ProtectedRoute({ children }) {
 
   useEffect(() => {
     //Check current session
-    // supabase.auth.getSession().then(({ data }) => {
-    //   setSession(data.session);
-    //   setLoading(false);
-    // });
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setLoading(false);
+    });
 
     // Listen for session changes (login/logout)
-    // const { data: listener } = supabase.auth.onAuthStateChange(
-    //   (_event, session) => {
-    //     setSession(session);
-    //   }
-    // );
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+      }
+    );
 
-    // return () => {
-    //   listener.subscription.unsubscribe();
-    // };
+    return () => {
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   if (loading) {
@@ -29,8 +30,8 @@ export default function ProtectedRoute({ children }) {
   }
 
   if (!session) {
-    return <Navigate to="/" replace />; // Redirect to AuthForm if not logged in
+    return <Navigate to="/" replace />; 
   }
 
-  return children; //Render Home if authenticated
+  return children; 
 }
