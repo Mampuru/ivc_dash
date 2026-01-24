@@ -1,57 +1,80 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, FileText, X, Save, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, FileText, X, Save, Search, LogOut } from 'lucide-react';
+import jsPDF from 'jspdf';
+import { supabase } from "../config/supabase";
+
 
 export default function Home() {
   const [customers, setCustomers] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [activeTab, setActiveTab] = useState('customers');
   const [editingCustomer, setEditingCustomer] = useState(null);
+  const [editingInvoice, setEditingInvoice] = useState(null);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState(null);
+
   const [customerForm, setCustomerForm] = useState({
     name: '',
     email: '',
     phone: '',
-    address: '',
     company: ''
   });
+
   const [invoiceForm, setInvoiceForm] = useState({
-    customerId: '',
+    customer_id: '',
     items: [{ description: '', quantity: 1, price: 0 }],
-    date: new Date().toISOString().split('T')[0],
-    dueDate: '',
+    issue_date: new Date().toISOString().split('T')[0],
+    due_date: '',
+    status: 'draft',
     notes: ''
   });
 
+  // Fetch user on mount
   useEffect(() => {
-    loadData();
+    fetchUser();
   }, []);
 
-  const loadData = async () => {
-    try {
-      const storedCustomers = await window.storage.get('customers');
-      const storedInvoices = await window.storage.get('invoices');
-      
-      if (storedCustomers) {
-        setCustomers(JSON.parse(storedCustomers.value));
-      }
-      if (storedInvoices) {
-        setInvoices(JSON.parse(storedInvoices.value));
-      }
-    } catch (error) {
-      console.log('No existing data found');
+  // Fetch data when tab changes
+  useEffect(() => {
+    if (activeTab === 'customers') {
+      fetchCustomers();
+    } else {
+      fetchInvoices();
+    }
+  }, [activeTab]);
+
+  const fetchUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    setUser(user);
+  };
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      alert('Error logging out: ' + error.message);
+    } else {
+      window.location.href = '/login'; // Redirect to login page
     }
   };
 
-  const saveCustomers = async (newCustomers) => {
-    await window.storage.set('customers', JSON.stringify(newCustomers));
-    setCustomers(newCustomers);
-  };
+  /* ------------------ CUSTOMER CRUD ------------------ */
+  const fetchCustomers = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('customer')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-  const saveInvoices = async (newInvoices) => {
-    await window.storage.set('invoices', JSON.stringify(newInvoices));
-    setInvoices(newInvoices);
+    if (error) {
+      console.error('Error fetching customers:', error);
+      alert('Error loading customers');
+    } else {
+      setCustomers(data || []);
+    }
+    setLoading(false);
   };
 
   const handleAddCustomer = async () => {
@@ -60,14 +83,23 @@ export default function Home() {
       return;
     }
 
-    const newCustomer = {
-      id: Date.now().toString(),
-      ...customerForm
-    };
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('customer')
+      .insert([customerForm])
+      .select()
+      .single();
 
-    await saveCustomers([...customers, newCustomer]);
-    setCustomerForm({ name: '', email: '', phone: '', address: '', company: '' });
-    setShowCustomerForm(false);
+    if (error) {
+      console.error('Error adding customer:', error);
+      alert('Error adding customer: ' + error.message);
+    } else {
+      setCustomers([data, ...customers]);
+      setCustomerForm({ name: '', email: '', phone: '', company: '' });
+      setShowCustomerForm(false);
+      alert('Customer added successfully!');
+    }
+    setLoading(false);
   };
 
   const handleUpdateCustomer = async () => {
@@ -76,20 +108,46 @@ export default function Home() {
       return;
     }
 
-    const updated = customers.map(c => 
-      c.id === editingCustomer.id ? { ...c, ...customerForm } : c
-    );
-    await saveCustomers(updated);
-    setEditingCustomer(null);
-    setCustomerForm({ name: '', email: '', phone: '', address: '', company: '' });
-    setShowCustomerForm(false);
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('customer')
+      .update(customerForm)
+      .eq('id', editingCustomer.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating customer:', error);
+      alert('Error updating customer: ' + error.message);
+    } else {
+      setCustomers(customers.map(c => c.id === editingCustomer.id ? data : c));
+      setEditingCustomer(null);
+      setCustomerForm({ name: '', email: '', phone: '', company: '' });
+      setShowCustomerForm(false);
+      alert('Customer updated successfully!');
+    }
+    setLoading(false);
   };
 
   const handleDeleteCustomer = async (id) => {
-    if (window.confirm('Are you sure you want to delete this customer?')) {
-      const filtered = customers.filter(c => c.id !== id);
-      await saveCustomers(filtered);
+    if (!window.confirm('Delete this customer? This will also delete all associated invoices.')) {
+      return;
     }
+
+    setLoading(true);
+    const { error } = await supabase
+      .from('customer')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting customer:', error);
+      alert('Error deleting customer: ' + error.message);
+    } else {
+      setCustomers(customers.filter(c => c.id !== id));
+      alert('Customer deleted successfully!');
+    }
+    setLoading(false);
   };
 
   const handleEditCustomer = (customer) => {
@@ -97,11 +155,27 @@ export default function Home() {
     setCustomerForm({
       name: customer.name,
       email: customer.email,
-      phone: customer.phone,
-      address: customer.address,
-      company: customer.company
+      phone: customer.phone || '',
+      company: customer.company || ''
     });
     setShowCustomerForm(true);
+  };
+
+  /* ------------------ INVOICE CRUD ------------------ */
+  const fetchInvoices = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('invoice')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching invoices:', error);
+      alert('Error loading invoices');
+    } else {
+      setInvoices(data || []);
+    }
+    setLoading(false);
   };
 
   const addInvoiceItem = () => {
@@ -112,72 +186,262 @@ export default function Home() {
   };
 
   const updateInvoiceItem = (index, field, value) => {
-    const newItems = [...invoiceForm.items];
-    newItems[index][field] = value;
-    setInvoiceForm({ ...invoiceForm, items: newItems });
+    const items = [...invoiceForm.items];
+    items[index][field] = value;
+    setInvoiceForm({ ...invoiceForm, items });
   };
 
   const removeInvoiceItem = (index) => {
-    const newItems = invoiceForm.items.filter((_, i) => i !== index);
-    setInvoiceForm({ ...invoiceForm, items: newItems });
+    setInvoiceForm({
+      ...invoiceForm,
+      items: invoiceForm.items.filter((_, i) => i !== index)
+    });
   };
 
-  const calculateTotal = () => {
-    return invoiceForm.items.reduce((sum, item) => 
-      sum + (item.quantity * item.price), 0
-    ).toFixed(2);
+  const calculateTotal = () =>
+    invoiceForm.items
+      .reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0), 0)
+      .toFixed(2);
+
+  const generateInvoiceNumber = () => {
+    const timestamp = Date.now();
+    return `INV-${timestamp.toString().slice(-8)}`;
   };
 
   const handleGenerateInvoice = async () => {
-    if (!invoiceForm.customerId) {
-      alert('Please select a customer');
+    if (!invoiceForm.customer_id) {
+      alert('Select a customer');
+      return;
+    }
+    if (!invoiceForm.due_date) {
+      alert('Select a due date');
       return;
     }
 
-    if (invoiceForm.items.some(item => !item.description)) {
-      alert('All items must have a description');
-      return;
-    }
-
-    const newInvoice = {
-      id: Date.now().toString(),
-      invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
-      customerId: invoiceForm.customerId,
+    const invoiceData = {
+      invoice_number: editingInvoice ? editingInvoice.invoice_number : generateInvoiceNumber(),
+      customer_id: parseInt(invoiceForm.customer_id),
+      issue_date: invoiceForm.issue_date,
+      due_date: invoiceForm.due_date,
+      status: invoiceForm.status,
+      total: parseFloat(calculateTotal()),
       items: invoiceForm.items,
-      date: invoiceForm.date,
-      dueDate: invoiceForm.dueDate,
-      notes: invoiceForm.notes,
-      total: calculateTotal(),
-      status: 'pending'
+      notes: invoiceForm.notes || null
     };
 
-    await saveInvoices([...invoices, newInvoice]);
+    setLoading(true);
+
+    if (editingInvoice) {
+      // Update existing invoice
+      const { data, error } = await supabase
+        .from('invoice')
+        .update(invoiceData)
+        .eq('id', editingInvoice.id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error updating invoice:', error);
+        alert('Error updating invoice: ' + error.message);
+      } else {
+        setInvoices(invoices.map(inv => inv.id === editingInvoice.id ? data : inv));
+        resetInvoiceForm();
+        alert('Invoice updated successfully!');
+      }
+    } else {
+      // Create new invoice
+      const { data, error } = await supabase
+        .from('invoice')
+        .insert([invoiceData])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating invoice:', error);
+        alert('Error creating invoice: ' + error.message);
+      } else {
+        setInvoices([data, ...invoices]);
+        resetInvoiceForm();
+        setActiveTab('invoices');
+        alert('Invoice created successfully!');
+      }
+    }
+
+    setLoading(false);
+  };
+
+  const handleEditInvoice = (invoice) => {
+    setEditingInvoice(invoice);
     setInvoiceForm({
-      customerId: '',
+      customer_id: invoice.customer_id.toString(),
+      items: invoice.items,
+      issue_date: invoice.issue_date,
+      due_date: invoice.due_date,
+      status: invoice.status,
+      notes: invoice.notes || ''
+    });
+    setShowInvoiceForm(true);
+  };
+
+  const handleDeleteInvoice = async (id) => {
+    if (!window.confirm('Delete this invoice?')) {
+      return;
+    }
+
+    setLoading(true);
+    const { error } = await supabase
+      .from('invoice')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting invoice:', error);
+      alert('Error deleting invoice: ' + error.message);
+    } else {
+      setInvoices(invoices.filter(inv => inv.id !== id));
+      alert('Invoice deleted successfully!');
+    }
+    setLoading(false);
+  };
+
+  const resetInvoiceForm = () => {
+    setInvoiceForm({
+      customer_id: '',
       items: [{ description: '', quantity: 1, price: 0 }],
-      date: new Date().toISOString().split('T')[0],
-      dueDate: '',
+      issue_date: new Date().toISOString().split('T')[0],
+      due_date: '',
+      status: 'draft',
       notes: ''
     });
     setShowInvoiceForm(false);
-    setActiveTab('invoices');
+    setEditingInvoice(null);
   };
 
+  /* ------------------ PDF EXPORT ------------------ */
   const filteredCustomers = customers.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.company.toLowerCase().includes(searchTerm.toLowerCase())
+    `${c.name} ${c.email} ${c.company || ''}`.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getCustomerById = (id) => customers.find(c => c.id === id);
+
+  const exportInvoicePDF = (invoice) => {
+    const doc = new jsPDF();
+    const customer = getCustomerById(invoice.customer_id);
+
+    let y = 20;
+
+    // Header
+    doc.setFontSize(20);
+    doc.text('INVOICE', 105, y, { align: 'center' });
+
+    y += 10;
+    doc.setFontSize(12);
+    doc.text(`Invoice #: ${invoice.invoice_number}`, 14, y);
+    y += 6;
+    doc.text(`Date: ${invoice.issue_date}`, 14, y);
+    y += 6;
+    doc.text(`Due Date: ${invoice.due_date}`, 14, y);
+    y += 6;
+    doc.text(`Status: ${invoice.status.toUpperCase()}`, 14, y);
+
+    // Customer info
+    y += 12;
+    doc.setFontSize(14);
+    doc.text('Bill To:', 14, y);
+
+    y += 6;
+    doc.setFontSize(12);
+    doc.text(customer?.name || '', 14, y);
+    if (customer?.company) {
+      y += 6;
+      doc.text(customer.company, 14, y);
+    }
+    if (customer?.email) {
+      y += 6;
+      doc.text(customer.email, 14, y);
+    }
+    if (customer?.phone) {
+      y += 6;
+      doc.text(customer.phone, 14, y);
+    }
+
+    // Items table header
+    y += 12;
+    doc.setFontSize(13);
+    doc.text('Description', 14, y);
+    doc.text('Qty', 120, y);
+    doc.text('Price', 140, y);
+    doc.text('Total', 170, y);
+
+    y += 4;
+    doc.line(14, y, 196, y);
+
+    // Items
+    doc.setFontSize(12);
+    invoice.items.forEach(item => {
+      y += 8;
+      const desc = item.description.length > 40 ? item.description.substring(0, 40) + '...' : item.description;
+      doc.text(desc, 14, y);
+      doc.text(String(item.quantity), 120, y);
+      doc.text(`R${item.price}`, 140, y);
+      doc.text(`R${(item.quantity * item.price).toFixed(2)}`, 170, y);
+    });
+
+    // Total
+    y += 12;
+    doc.line(120, y, 196, y);
+    y += 8;
+    doc.setFontSize(14);
+    doc.text(`Total: R${invoice.total}`, 140, y);
+
+    // Notes
+    if (invoice.notes) {
+      y += 12;
+      doc.setFontSize(12);
+      doc.text('Notes:', 14, y);
+      y += 6;
+      const splitNotes = doc.splitTextToSize(invoice.notes, 180);
+      doc.text(splitNotes, 14, y);
+    }
+
+    doc.save(`${invoice.invoice_number}.pdf`);
+  };
+
+  const getStatusColor = (status) => {
+    const colors = {
+      draft: 'bg-gray-100 text-gray-800',
+      sent: 'bg-blue-100 text-blue-800',
+      paid: 'bg-green-100 text-green-800',
+      overdue: 'bg-red-100 text-red-800',
+      cancelled: 'bg-gray-100 text-gray-600'
+    };
+    return colors[status] || 'bg-gray-100 text-gray-800';
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 p-8">
       <div className="max-w-7xl mx-auto">
         <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
           <div className="bg-gradient-to-r from-gray-900 to-black p-8 text-white">
-            <h1 className="text-4xl font-bold mb-2">Invoice Manager</h1>
-            <p className="text-gray-300">Manage customers and generate invoices</p>
+            <div className="flex justify-between items-start">
+              <div>
+                <h1 className="text-4xl font-bold mb-2">Invoice Manager</h1>
+                <p className="text-gray-300">Manage customers and generate invoices</p>
+              </div>
+              <div className="flex items-center gap-4">
+                {user && (
+                  <div className="text-right">
+                    <p className="text-sm text-gray-300">{user.email}</p>
+                  </div>
+                )}
+                <button
+                  onClick={handleLogout}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                >
+                  <LogOut size={18} /> Logout
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="border-b border-gray-200">
@@ -206,6 +470,13 @@ export default function Home() {
           </div>
 
           <div className="p-8">
+            {loading && (
+              <div className="text-center py-4 text-gray-600">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                <p className="mt-2">Loading...</p>
+              </div>
+            )}
+
             {activeTab === 'customers' && (
               <div>
                 <div className="flex justify-between items-center mb-6">
@@ -222,7 +493,7 @@ export default function Home() {
                   <button
                     onClick={() => {
                       setEditingCustomer(null);
-                      setCustomerForm({ name: '', email: '', phone: '', address: '', company: '' });
+                      setCustomerForm({ name: '', email: '', phone: '', company: '' });
                       setShowCustomerForm(true);
                     }}
                     className="ml-4 bg-black text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-800 transition-colors"
@@ -241,7 +512,7 @@ export default function Home() {
                         onClick={() => {
                           setShowCustomerForm(false);
                           setEditingCustomer(null);
-                          setCustomerForm({ name: '', email: '', phone: '', address: '', company: '' });
+                          setCustomerForm({ name: '', email: '', phone: '', company: '' });
                         }}
                         className="text-gray-500 hover:text-gray-700"
                       >
@@ -277,17 +548,11 @@ export default function Home() {
                         onChange={(e) => setCustomerForm({ ...customerForm, company: e.target.value })}
                         className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
                       />
-                      <input
-                        type="text"
-                        placeholder="Address"
-                        value={customerForm.address}
-                        onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
-                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black col-span-2"
-                      />
                     </div>
                     <button
                       onClick={editingCustomer ? handleUpdateCustomer : handleAddCustomer}
-                      className="mt-4 bg-green-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition-colors"
+                      disabled={loading}
+                      className="mt-4 bg-green-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition-colors disabled:opacity-50"
                     >
                       <Save size={20} /> {editingCustomer ? 'Update' : 'Save'} Customer
                     </button>
@@ -295,7 +560,7 @@ export default function Home() {
                 )}
 
                 <div className="grid gap-4">
-                  {filteredCustomers.length === 0 ? (
+                  {!loading && filteredCustomers.length === 0 ? (
                     <div className="text-center py-12 text-gray-500">
                       <p className="text-lg">No customers found</p>
                       <p className="text-sm">Add your first customer to get started</p>
@@ -312,7 +577,6 @@ export default function Home() {
                             <div className="space-y-1 text-gray-600">
                               <p>📧 {customer.email}</p>
                               {customer.phone && <p>📱 {customer.phone}</p>}
-                              {customer.address && <p>📍 {customer.address}</p>}
                             </div>
                           </div>
                           <div className="flex gap-2">
@@ -342,7 +606,11 @@ export default function Home() {
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-bold text-gray-800">Invoices</h2>
                   <button
-                    onClick={() => setShowInvoiceForm(true)}
+                    onClick={() => {
+                      setEditingInvoice(null);
+                      resetInvoiceForm();
+                      setShowInvoiceForm(true);
+                    }}
                     className="bg-green-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition-colors"
                   >
                     <FileText size={20} /> Generate Invoice
@@ -352,19 +620,21 @@ export default function Home() {
                 {showInvoiceForm && (
                   <div className="bg-gray-50 p-6 rounded-lg mb-6 border-2 border-green-200">
                     <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-xl font-bold text-gray-800">New Invoice</h3>
+                      <h3 className="text-xl font-bold text-gray-800">
+                        {editingInvoice ? 'Edit Invoice' : 'New Invoice'}
+                      </h3>
                       <button
-                        onClick={() => setShowInvoiceForm(false)}
+                        onClick={resetInvoiceForm}
                         className="text-gray-500 hover:text-gray-700"
                       >
                         <X size={24} />
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="grid grid-cols-4 gap-4 mb-4">
                       <select
-                        value={invoiceForm.customerId}
-                        onChange={(e) => setInvoiceForm({ ...invoiceForm, customerId: e.target.value })}
+                        value={invoiceForm.customer_id}
+                        onChange={(e) => setInvoiceForm({ ...invoiceForm, customer_id: e.target.value })}
                         className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
                       >
                         <option value="">Select Customer *</option>
@@ -374,17 +644,27 @@ export default function Home() {
                       </select>
                       <input
                         type="date"
-                        value={invoiceForm.date}
-                        onChange={(e) => setInvoiceForm({ ...invoiceForm, date: e.target.value })}
+                        value={invoiceForm.issue_date}
+                        onChange={(e) => setInvoiceForm({ ...invoiceForm, issue_date: e.target.value })}
                         className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
                       />
                       <input
                         type="date"
-                        placeholder="Due Date"
-                        value={invoiceForm.dueDate}
-                        onChange={(e) => setInvoiceForm({ ...invoiceForm, dueDate: e.target.value })}
+                        value={invoiceForm.due_date}
+                        onChange={(e) => setInvoiceForm({ ...invoiceForm, due_date: e.target.value })}
                         className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
                       />
+                      <select
+                        value={invoiceForm.status}
+                        onChange={(e) => setInvoiceForm({ ...invoiceForm, status: e.target.value })}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
+                      >
+                        <option value="draft">Draft</option>
+                        <option value="sent">Sent</option>
+                        <option value="paid">Paid</option>
+                        <option value="overdue">Overdue</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
                     </div>
 
                     <div className="mb-4">
@@ -402,19 +682,20 @@ export default function Home() {
                             type="number"
                             placeholder="Qty"
                             value={item.quantity}
-                            onChange={(e) => updateInvoiceItem(index, 'quantity', parseFloat(e.target.value))}
+                            onChange={(e) => updateInvoiceItem(index, 'quantity', parseFloat(e.target.value) || 0)}
                             className="col-span-2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
                           />
                           <input
                             type="number"
                             placeholder="Price"
                             value={item.price}
-                            onChange={(e) => updateInvoiceItem(index, 'price', parseFloat(e.target.value))}
+                            onChange={(e) => updateInvoiceItem(index, 'price', parseFloat(e.target.value) || 0)}
                             className="col-span-3 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
                           />
                           <button
                             onClick={() => removeInvoiceItem(index)}
-                            className="col-span-1 text-red-600 hover:bg-red-50 rounded-lg"
+                            disabled={invoiceForm.items.length === 1}
+                            className="col-span-1 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
                           >
                             <Trash2 size={20} />
                           </button>
@@ -438,40 +719,44 @@ export default function Home() {
 
                     <div className="flex justify-between items-center">
                       <div className="text-2xl font-bold text-gray-800">
-                        Total: ${calculateTotal()}
+                        Total: R{calculateTotal()}
                       </div>
                       <button
                         onClick={handleGenerateInvoice}
-                        className="bg-green-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition-colors"
+                        disabled={loading}
+                        className="bg-green-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition-colors disabled:opacity-50"
                       >
-                        <FileText size={20} /> Generate Invoice
+                        <FileText size={20} /> {editingInvoice ? 'Update' : 'Generate'} Invoice
                       </button>
                     </div>
                   </div>
                 )}
 
                 <div className="grid gap-4">
-                  {invoices.length === 0 ? (
+                  {!loading && invoices.length === 0 ? (
                     <div className="text-center py-12 text-gray-500">
                       <p className="text-lg">No invoices yet</p>
                       <p className="text-sm">Generate your first invoice</p>
                     </div>
                   ) : (
                     invoices.map(invoice => {
-                      const customer = getCustomerById(invoice.customerId);
+                      const customer = getCustomerById(invoice.customer_id);
                       return (
                         <div key={invoice.id} className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow">
                           <div className="flex justify-between items-start mb-4">
                             <div>
-                              <h3 className="text-xl font-bold text-gray-800">{invoice.invoiceNumber}</h3>
-                              <p className="text-gray-600">{customer?.name}</p>
-                              <p className="text-sm text-gray-500">Date: {invoice.date}</p>
-                              {invoice.dueDate && <p className="text-sm text-gray-500">Due: {invoice.dueDate}</p>}
+                              <h3 className="text-xl font-bold text-gray-800">{invoice.invoice_number}</h3>
+                              <p className="text-gray-600">{customer?.name || 'Unknown Customer'}</p>
+                              <p className="text-sm text-gray-500">Issue Date: {invoice.issue_date}</p>
+                              <p className="text-sm text-gray-500">Due Date: {invoice.due_date}</p>
+                              {invoice.payment_date && (
+                                <p className="text-sm text-green-600">Paid: {invoice.payment_date}</p>
+                              )}
                             </div>
                             <div className="text-right">
-                              <div className="text-2xl font-bold text-green-600">${invoice.total}</div>
-                              <span className="inline-block mt-2 px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm">
-                                {invoice.status}
+                              <div className="text-2xl font-bold text-green-600">R{parseFloat(invoice.total).toFixed(2)}</div>
+                              <span className={`inline-block mt-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(invoice.status)}`}>
+                                {invoice.status.toUpperCase()}
                               </span>
                             </div>
                           </div>
@@ -480,12 +765,34 @@ export default function Home() {
                             {invoice.items.map((item, idx) => (
                               <div key={idx} className="flex justify-between text-sm text-gray-600 mb-1">
                                 <span>{item.description}</span>
-                                <span>{item.quantity} x ${item.price} = ${(item.quantity * item.price).toFixed(2)}</span>
+                                <span>{item.quantity} x R{item.price} = R{(item.quantity * item.price).toFixed(2)}</span>
                               </div>
                             ))}
                           </div>
+
+                          <div className="flex gap-2 mt-4">
+                            <button
+                              onClick={() => exportInvoicePDF(invoice)}
+                              className="bg-black text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-800 transition-colors"
+                            >
+                              Export PDF
+                            </button>
+                            <button
+                              onClick={() => handleEditInvoice(invoice)}
+                              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteInvoice(invoice.id)}
+                              className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </div>
+
                           {invoice.notes && (
-                            <div className="mt-4 text-sm text-gray-600">
+                            <div className="mt-4 text-sm text-gray-600 bg-gray-50 p-3 rounded">
                               <strong>Notes:</strong> {invoice.notes}
                             </div>
                           )}
