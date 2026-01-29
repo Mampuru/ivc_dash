@@ -56,7 +56,7 @@ export default function Home() {
     if (error) {
       alert('Error logging out: ' + error.message);
     } else {
-      window.location.href = '/login'; // Redirect to login page
+      window.location.href = '/'; // Redirect to login page
     }
   };
 
@@ -323,89 +323,6 @@ export default function Home() {
   );
 
   const getCustomerById = (id) => customers.find(c => c.id === id);
-
-  // const exportInvoicePDF = (invoice) => {
-  //   const doc = new jsPDF();
-  //   const customer = getCustomerById(invoice.customer_id);
-
-  //   let y = 20;
-
-  //   // Header
-  //   doc.setFontSize(20);
-  //   doc.text('INVOICE', 105, y, { align: 'center' });
-
-  //   y += 10;
-  //   doc.setFontSize(12);
-  //   doc.text(`Invoice #: ${invoice.invoice_number}`, 14, y);
-  //   y += 6;
-  //   doc.text(`Date: ${invoice.issue_date}`, 14, y);
-  //   y += 6;
-  //   doc.text(`Due Date: ${invoice.due_date}`, 14, y);
-  //   y += 6;
-  //   doc.text(`Status: ${invoice.status.toUpperCase()}`, 14, y);
-
-  //   // Customer info
-  //   y += 12;
-  //   doc.setFontSize(14);
-  //   doc.text('Bill To:', 14, y);
-
-  //   y += 6;
-  //   doc.setFontSize(12);
-  //   doc.text(customer?.name || '', 14, y);
-  //   if (customer?.company) {
-  //     y += 6;
-  //     doc.text(customer.company, 14, y);
-  //   }
-  //   if (customer?.email) {
-  //     y += 6;
-  //     doc.text(customer.email, 14, y);
-  //   }
-  //   if (customer?.phone) {
-  //     y += 6;
-  //     doc.text(customer.phone, 14, y);
-  //   }
-
-  //   // Items table header
-  //   y += 12;
-  //   doc.setFontSize(13);
-  //   doc.text('Description', 14, y);
-  //   doc.text('Qty', 120, y);
-  //   doc.text('Price', 140, y);
-  //   doc.text('Total', 170, y);
-
-  //   y += 4;
-  //   doc.line(14, y, 196, y);
-
-  //   // Items
-  //   doc.setFontSize(12);
-  //   invoice.items.forEach(item => {
-  //     y += 8;
-  //     const desc = item.description.length > 40 ? item.description.substring(0, 40) + '...' : item.description;
-  //     doc.text(desc, 14, y);
-  //     doc.text(String(item.quantity), 120, y);
-  //     doc.text(`R${item.price}`, 140, y);
-  //     doc.text(`R${(item.quantity * item.price).toFixed(2)}`, 170, y);
-  //   });
-
-  //   // Total
-  //   y += 12;
-  //   doc.line(120, y, 196, y);
-  //   y += 8;
-  //   doc.setFontSize(14);
-  //   doc.text(`Total: R${invoice.total}`, 140, y);
-
-  //   // Notes
-  //   if (invoice.notes) {
-  //     y += 12;
-  //     doc.setFontSize(12);
-  //     doc.text('Notes:', 14, y);
-  //     y += 6;
-  //     const splitNotes = doc.splitTextToSize(invoice.notes, 180);
-  //     doc.text(splitNotes, 14, y);
-  //   }
-
-  //   doc.save(`${invoice.invoice_number}.pdf`);
-  // };
 
 const exportInvoicePDF = (invoice) => {
     const doc = new jsPDF();

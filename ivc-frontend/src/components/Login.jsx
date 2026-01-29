@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "../config/supabase";
+import LOGO from "../assets/logo.png"
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -126,7 +127,7 @@ const Login = () => {
     <div style={styles.container}>
       <div style={styles.formWrapper}>
         <img
-          src="/src/assets/t"
+          src={LOGO}
           alt="I-Vision Corp Logo"
           style={styles.image}
         />
@@ -218,8 +219,8 @@ const styles = {
     textAlign: 'center',
   },
   image: {
-    width: "160px",
-    height: "60px",
+    width: "190px",
+    height: "50px",
     margin: "15px auto",
   },
   form: {
