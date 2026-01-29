@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, FileText, X, Save, Search, LogOut } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { supabase } from "../config/supabase";
-
+import LOGO from "../assets/logo.png"
 
 export default function Home() {
   const [customers, setCustomers] = useState([]);
@@ -324,87 +324,207 @@ export default function Home() {
 
   const getCustomerById = (id) => customers.find(c => c.id === id);
 
-  const exportInvoicePDF = (invoice) => {
+  // const exportInvoicePDF = (invoice) => {
+  //   const doc = new jsPDF();
+  //   const customer = getCustomerById(invoice.customer_id);
+
+  //   let y = 20;
+
+  //   // Header
+  //   doc.setFontSize(20);
+  //   doc.text('INVOICE', 105, y, { align: 'center' });
+
+  //   y += 10;
+  //   doc.setFontSize(12);
+  //   doc.text(`Invoice #: ${invoice.invoice_number}`, 14, y);
+  //   y += 6;
+  //   doc.text(`Date: ${invoice.issue_date}`, 14, y);
+  //   y += 6;
+  //   doc.text(`Due Date: ${invoice.due_date}`, 14, y);
+  //   y += 6;
+  //   doc.text(`Status: ${invoice.status.toUpperCase()}`, 14, y);
+
+  //   // Customer info
+  //   y += 12;
+  //   doc.setFontSize(14);
+  //   doc.text('Bill To:', 14, y);
+
+  //   y += 6;
+  //   doc.setFontSize(12);
+  //   doc.text(customer?.name || '', 14, y);
+  //   if (customer?.company) {
+  //     y += 6;
+  //     doc.text(customer.company, 14, y);
+  //   }
+  //   if (customer?.email) {
+  //     y += 6;
+  //     doc.text(customer.email, 14, y);
+  //   }
+  //   if (customer?.phone) {
+  //     y += 6;
+  //     doc.text(customer.phone, 14, y);
+  //   }
+
+  //   // Items table header
+  //   y += 12;
+  //   doc.setFontSize(13);
+  //   doc.text('Description', 14, y);
+  //   doc.text('Qty', 120, y);
+  //   doc.text('Price', 140, y);
+  //   doc.text('Total', 170, y);
+
+  //   y += 4;
+  //   doc.line(14, y, 196, y);
+
+  //   // Items
+  //   doc.setFontSize(12);
+  //   invoice.items.forEach(item => {
+  //     y += 8;
+  //     const desc = item.description.length > 40 ? item.description.substring(0, 40) + '...' : item.description;
+  //     doc.text(desc, 14, y);
+  //     doc.text(String(item.quantity), 120, y);
+  //     doc.text(`R${item.price}`, 140, y);
+  //     doc.text(`R${(item.quantity * item.price).toFixed(2)}`, 170, y);
+  //   });
+
+  //   // Total
+  //   y += 12;
+  //   doc.line(120, y, 196, y);
+  //   y += 8;
+  //   doc.setFontSize(14);
+  //   doc.text(`Total: R${invoice.total}`, 140, y);
+
+  //   // Notes
+  //   if (invoice.notes) {
+  //     y += 12;
+  //     doc.setFontSize(12);
+  //     doc.text('Notes:', 14, y);
+  //     y += 6;
+  //     const splitNotes = doc.splitTextToSize(invoice.notes, 180);
+  //     doc.text(splitNotes, 14, y);
+  //   }
+
+  //   doc.save(`${invoice.invoice_number}.pdf`);
+  // };
+
+const exportInvoicePDF = (invoice) => {
     const doc = new jsPDF();
     const customer = getCustomerById(invoice.customer_id);
-
     let y = 20;
 
-    // Header
-    doc.setFontSize(20);
-    doc.text('INVOICE', 105, y, { align: 'center' });
-
+    // Logo (top left corner) - 60x150 dimensions
+    doc.addImage(LOGO, 'PNG', 14, y, 80, 20);
+    
+    // Business Info (top right corner)
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('I-Vision Corp', 196, y, { align: 'right' });
+    y += 6;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Reg No: 2019/567510/07`, 196, y, { align: 'right' });
+    y += 5;
+    doc.text(`Tax No: 9717746177`, 196, y, { align: 'right' });
+    y += 5;
+    doc.text('hello@ivisioncorp.co.za', 196, y, { align: 'right' });
     y += 10;
-    doc.setFontSize(12);
-    doc.text(`Invoice #: ${invoice.invoice_number}`, 14, y);
-    y += 6;
-    doc.text(`Date: ${invoice.issue_date}`, 14, y);
-    y += 6;
-    doc.text(`Due Date: ${invoice.due_date}`, 14, y);
-    y += 6;
-    doc.text(`Status: ${invoice.status.toUpperCase()}`, 14, y);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Invoice #: ${invoice.invoice_number}`, 196, y, { align: 'right' });
 
-    // Customer info
-    y += 12;
-    doc.setFontSize(14);
-    doc.text('Bill To:', 14, y);
+    // Reset y for Bill To section (below logo)
+    y = 55;
 
-    y += 6;
-    doc.setFontSize(12);
-    doc.text(customer?.name || '', 14, y);
-    if (customer?.company) {
-      y += 6;
-      doc.text(customer.company, 14, y);
-    }
-    if (customer?.email) {
-      y += 6;
-      doc.text(customer.email, 14, y);
-    }
-    if (customer?.phone) {
-      y += 6;
-      doc.text(customer.phone, 14, y);
-    }
-
+    // Bill To section
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BILL TO:', 14, y);
+    y += 7;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(customer.name, 14, y);
+    y += 5;
+    doc.text(customer.company, 14, y);
+    y += 5;
+    doc.text(customer.email, 14, y);
+    
     // Items table header
-    y += 12;
+    y += 20;
     doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
     doc.text('Description', 14, y);
     doc.text('Qty', 120, y);
     doc.text('Price', 140, y);
     doc.text('Total', 170, y);
-
     y += 4;
+    doc.setLineWidth(0.5);
     doc.line(14, y, 196, y);
-
+    
     // Items
     doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
     invoice.items.forEach(item => {
       y += 8;
       const desc = item.description.length > 40 ? item.description.substring(0, 40) + '...' : item.description;
       doc.text(desc, 14, y);
       doc.text(String(item.quantity), 120, y);
-      doc.text(`R${item.price}`, 140, y);
+      doc.text(`R${item.price.toFixed(2)}`, 140, y);
       doc.text(`R${(item.quantity * item.price).toFixed(2)}`, 170, y);
     });
-
+    
     // Total
     y += 12;
+    doc.setLineWidth(0.5);
     doc.line(120, y, 196, y);
     y += 8;
     doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
     doc.text(`Total: R${invoice.total}`, 140, y);
-
+    
     // Notes
     if (invoice.notes) {
-      y += 12;
+      y += 15;
       doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
       doc.text('Notes:', 14, y);
       y += 6;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
       const splitNotes = doc.splitTextToSize(invoice.notes, 180);
       doc.text(splitNotes, 14, y);
+      y += splitNotes.length * 5;
     }
 
-    doc.save(`${invoice.invoice_number}.pdf`);
+    // Thank you note
+    y += 15;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(80, 80, 80);
+    doc.text('Thank you for your business!', 105, y, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+
+    // Banking Details
+    y += 12;
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Banking Details:', 14, y);
+    y += 7;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Bank: Standard Bank`, 14, y);
+    y += 5;
+    doc.text(`Account Name: I VISION CORP`, 14, y);
+    y += 5;
+    doc.text(`Account Number: 10 16 630 158 0`, 14, y);
+    y += 5;
+    doc.text(`Branch Code: 1255`, 14, y);
+    y += 5;
+    doc.text(`Account Type: Cheque`, 14, y);
+    y += 5;
+    doc.text(`Reference: ${invoice.invoice_number}`, 14, y);
+
+    // Save the PDF
+    doc.save(`Invoice-${invoice.invoice_number}.pdf`);
   };
 
   const getStatusColor = (status) => {
