@@ -7,11 +7,14 @@ import LOGO from "../assets/logo.png"
 export default function Home() {
   const [customers, setCustomers] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [quotes, setQuotes] = useState([]);
   const [activeTab, setActiveTab] = useState('customers');
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [editingInvoice, setEditingInvoice] = useState(null);
+  const [editingQuote, setEditingQuote] = useState(null);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+  const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
@@ -32,6 +35,15 @@ export default function Home() {
     notes: ''
   });
 
+  const [quoteForm, setQuoteForm] = useState({
+    customer_id: '',
+    items: [{ description: '', quantity: 1, price: 0 }],
+    issue_date: new Date().toISOString().split('T')[0],
+    expiry_date: '',
+    status: 'draft',
+    notes: ''
+  });
+
   // Fetch user on mount
   useEffect(() => {
     fetchUser();
@@ -41,8 +53,11 @@ export default function Home() {
   useEffect(() => {
     if (activeTab === 'customers') {
       fetchCustomers();
-    } else {
+    } else if (activeTab === 'invoices') {
       fetchInvoices();
+    } else if (activeTab === 'quotes') {
+      fetchQuotes();
+      if (customers.length === 0) fetchCustomers();
     }
   }, [activeTab]);
 
@@ -130,7 +145,7 @@ export default function Home() {
   };
 
   const handleDeleteCustomer = async (id) => {
-    if (!window.confirm('Delete this customer? This will also delete all associated invoices.')) {
+    if (!window.confirm('Delete this customer? This will also delete all associated invoices and quotes.')) {
       return;
     }
 
@@ -202,6 +217,191 @@ export default function Home() {
     invoiceForm.items
       .reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0), 0)
       .toFixed(2);
+
+  /* ------------------ QUOTE CRUD ------------------ */
+  const fetchQuotes = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('quote')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching quotes:', error);
+      alert('Error loading quotes');
+    } else {
+      setQuotes(data || []);
+    }
+    setLoading(false);
+  };
+
+  const addQuoteItem = () => {
+    setQuoteForm({
+      ...quoteForm,
+      items: [...quoteForm.items, { description: '', quantity: 1, price: 0 }]
+    });
+  };
+
+  const updateQuoteItem = (index, field, value) => {
+    const items = [...quoteForm.items];
+    items[index][field] = value;
+    setQuoteForm({ ...quoteForm, items });
+  };
+
+  const removeQuoteItem = (index) => {
+    setQuoteForm({
+      ...quoteForm,
+      items: quoteForm.items.filter((_, i) => i !== index)
+    });
+  };
+
+  const calculateQuoteTotal = () =>
+    quoteForm.items
+      .reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0), 0)
+      .toFixed(2);
+
+  const generateQuoteNumber = () => {
+    const timestamp = Date.now();
+    return `QUO-${timestamp.toString().slice(-8)}`;
+  };
+
+  const handleGenerateQuote = async () => {
+    if (!quoteForm.customer_id) {
+      alert('Select a customer');
+      return;
+    }
+    if (!quoteForm.expiry_date) {
+      alert('Select an expiry date');
+      return;
+    }
+
+    const quoteData = {
+      quote_number: editingQuote ? editingQuote.quote_number : generateQuoteNumber(),
+      customer_id: parseInt(quoteForm.customer_id),
+      issue_date: quoteForm.issue_date,
+      expiry_date: quoteForm.expiry_date,
+      status: quoteForm.status,
+      total: parseFloat(calculateQuoteTotal()),
+      items: quoteForm.items,
+      notes: quoteForm.notes || null
+    };
+
+    setLoading(true);
+
+    if (editingQuote) {
+      const { data, error } = await supabase
+        .from('quote')
+        .update(quoteData)
+        .eq('id', editingQuote.id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error updating quote:', error);
+        alert('Error updating quote: ' + error.message);
+      } else {
+        setQuotes(quotes.map(q => q.id === editingQuote.id ? data : q));
+        resetQuoteForm();
+        alert('Quote updated successfully!');
+      }
+    } else {
+      const { data, error } = await supabase
+        .from('quote')
+        .insert([quoteData])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating quote:', error);
+        alert('Error creating quote: ' + error.message);
+      } else {
+        setQuotes([data, ...quotes]);
+        resetQuoteForm();
+        setActiveTab('quotes');
+        alert('Quote created successfully!');
+      }
+    }
+
+    setLoading(false);
+  };
+
+  const handleEditQuote = (quote) => {
+    setEditingQuote(quote);
+    setQuoteForm({
+      customer_id: quote.customer_id.toString(),
+      items: quote.items,
+      issue_date: quote.issue_date,
+      expiry_date: quote.expiry_date,
+      status: quote.status,
+      notes: quote.notes || ''
+    });
+    setShowQuoteForm(true);
+  };
+
+  const handleDeleteQuote = async (id) => {
+    if (!window.confirm('Delete this quote?')) return;
+
+    setLoading(true);
+    const { error } = await supabase
+      .from('quote')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting quote:', error);
+      alert('Error deleting quote: ' + error.message);
+    } else {
+      setQuotes(quotes.filter(q => q.id !== id));
+      alert('Quote deleted successfully!');
+    }
+    setLoading(false);
+  };
+
+  const resetQuoteForm = () => {
+    setQuoteForm({
+      customer_id: '',
+      items: [{ description: '', quantity: 1, price: 0 }],
+      issue_date: new Date().toISOString().split('T')[0],
+      expiry_date: '',
+      status: 'draft',
+      notes: ''
+    });
+    setShowQuoteForm(false);
+    setEditingQuote(null);
+  };
+
+  const handleConvertToInvoice = async (quote) => {
+    if (!window.confirm('Convert this quote to an invoice?')) return;
+
+    const invoiceData = {
+      invoice_number: generateInvoiceNumber(),
+      customer_id: quote.customer_id,
+      issue_date: new Date().toISOString().split('T')[0],
+      due_date: quote.expiry_date,
+      status: 'draft',
+      total: quote.total,
+      items: quote.items,
+      notes: quote.notes || null
+    };
+
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('invoice')
+      .insert([invoiceData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error converting quote to invoice:', error);
+      alert('Error converting quote: ' + error.message);
+    } else {
+      await supabase.from('quote').update({ status: 'accepted' }).eq('id', quote.id);
+      setQuotes(quotes.map(q => q.id === quote.id ? { ...q, status: 'accepted' } : q));
+      setInvoices([data, ...invoices]);
+      alert('Quote converted to invoice successfully!');
+    }
+    setLoading(false);
+  };
 
   const generateInvoiceNumber = () => {
     const timestamp = Date.now();
@@ -444,12 +644,128 @@ const exportInvoicePDF = (invoice) => {
     doc.save(`Invoice-${invoice.invoice_number}.pdf`);
   };
 
+  const exportQuotePDF = (quote) => {
+    const doc = new jsPDF();
+    const customer = getCustomerById(quote.customer_id);
+    let y = 20;
+
+    // Logo (top left corner)
+    doc.addImage(LOGO, 'PNG', 14, y, 80, 20);
+
+    // Business Info (top right corner)
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('I-Vision Corp', 196, y, { align: 'right' });
+    y += 6;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Reg No: 2019/567510/07`, 196, y, { align: 'right' });
+    y += 5;
+    doc.text(`Tax No: 9717746177`, 196, y, { align: 'right' });
+    y += 5;
+    doc.text('hello@ivisioncorp.co.za', 196, y, { align: 'right' });
+    y += 10;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Quote #: ${quote.quote_number}`, 196, y, { align: 'right' });
+
+    // Reset y for Quote For section (below logo)
+    y = 55;
+
+    // Quote For section
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('QUOTE FOR:', 14, y);
+    y += 7;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(customer.name, 14, y);
+    y += 5;
+    if (customer.company) { doc.text(customer.company, 14, y); y += 5; }
+    doc.text(customer.email, 14, y);
+
+    // Items table header
+    y += 20;
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Description', 14, y);
+    doc.text('Qty', 120, y);
+    doc.text('Price', 140, y);
+    doc.text('Total', 170, y);
+    y += 4;
+    doc.setLineWidth(0.5);
+    doc.line(14, y, 196, y);
+
+    // Items
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    quote.items.forEach(item => {
+      y += 8;
+      const desc = item.description.length > 40 ? item.description.substring(0, 40) + '...' : item.description;
+      doc.text(desc, 14, y);
+      doc.text(String(item.quantity), 120, y);
+      doc.text(`R${item.price.toFixed(2)}`, 140, y);
+      doc.text(`R${(item.quantity * item.price).toFixed(2)}`, 170, y);
+    });
+
+    // Total
+    y += 12;
+    doc.setLineWidth(0.5);
+    doc.line(120, y, 196, y);
+    y += 8;
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total: R${quote.total}`, 140, y);
+
+    // Notes
+    if (quote.notes) {
+      y += 15;
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Notes:', 14, y);
+      y += 6;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      const splitNotes = doc.splitTextToSize(quote.notes, 180);
+      doc.text(splitNotes, 14, y);
+      y += splitNotes.length * 5;
+    }
+
+    // Thank you note
+    y += 15;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(80, 80, 80);
+    doc.text('Thank you for considering our quote!', 105, y, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+
+    // Validity note
+    y += 10;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`This quote is valid until: ${quote.expiry_date}`, 105, y, { align: 'center' });
+
+    doc.save(`Quote-${quote.quote_number}.pdf`);
+  };
+
   const getStatusColor = (status) => {
     const colors = {
       draft: 'bg-gray-100 text-gray-800',
       sent: 'bg-blue-100 text-blue-800',
       paid: 'bg-green-100 text-green-800',
       overdue: 'bg-red-100 text-red-800',
+      cancelled: 'bg-gray-100 text-gray-600'
+    };
+    return colors[status] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getQuoteStatusColor = (status) => {
+    const colors = {
+      draft: 'bg-gray-100 text-gray-800',
+      sent: 'bg-blue-100 text-blue-800',
+      accepted: 'bg-green-100 text-green-800',
+      declined: 'bg-red-100 text-red-800',
+      expired: 'bg-orange-100 text-orange-800',
       cancelled: 'bg-gray-100 text-gray-600'
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
@@ -463,7 +779,7 @@ const exportInvoicePDF = (invoice) => {
             <div className="flex justify-between items-start">
               <div>
                 <h1 className="text-4xl font-bold mb-2">Invoice Manager</h1>
-                <p className="text-gray-300">Manage customers and generate invoices</p>
+                <p className="text-gray-300">Manage customers, quotes and invoices</p>
               </div>
               <div className="flex items-center gap-4">
                 {user && (
@@ -492,6 +808,16 @@ const exportInvoicePDF = (invoice) => {
                 }`}
               >
                 Customers
+              </button>
+              <button
+                onClick={() => setActiveTab('quotes')}
+                className={`px-8 py-4 font-semibold transition-colors ${
+                  activeTab === 'quotes'
+                    ? 'text-black border-b-2 border-black'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Quotes
               </button>
               <button
                 onClick={() => setActiveTab('invoices')}
@@ -633,6 +959,209 @@ const exportInvoicePDF = (invoice) => {
                         </div>
                       </div>
                     ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'quotes' && (
+              <div>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold text-gray-800">Quotes</h2>
+                  <button
+                    onClick={() => {
+                      setEditingQuote(null);
+                      resetQuoteForm();
+                      setShowQuoteForm(true);
+                    }}
+                    className="bg-purple-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-purple-700 transition-colors"
+                  >
+                    <FileText size={20} /> Generate Quote
+                  </button>
+                </div>
+
+                {showQuoteForm && (
+                  <div className="bg-gray-50 p-6 rounded-lg mb-6 border-2 border-purple-200">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-xl font-bold text-gray-800">
+                        {editingQuote ? 'Edit Quote' : 'New Quote'}
+                      </h3>
+                      <button onClick={resetQuoteForm} className="text-gray-500 hover:text-gray-700">
+                        <X size={24} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-4 mb-4">
+                      <select
+                        value={quoteForm.customer_id}
+                        onChange={(e) => setQuoteForm({ ...quoteForm, customer_id: e.target.value })}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                      >
+                        <option value="">Select Customer *</option>
+                        {customers.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="date"
+                        value={quoteForm.issue_date}
+                        onChange={(e) => setQuoteForm({ ...quoteForm, issue_date: e.target.value })}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
+                      />
+                      <input
+                        type="date"
+                        value={quoteForm.expiry_date}
+                        onChange={(e) => setQuoteForm({ ...quoteForm, expiry_date: e.target.value })}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
+                      />
+                      <select
+                        value={quoteForm.status}
+                        onChange={(e) => setQuoteForm({ ...quoteForm, status: e.target.value })}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
+                      >
+                        <option value="draft">Draft</option>
+                        <option value="sent">Sent</option>
+                        <option value="accepted">Accepted</option>
+                        <option value="declined">Declined</option>
+                        <option value="expired">Expired</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                    </div>
+
+                    <div className="mb-4">
+                      <h4 className="font-semibold mb-2">Items</h4>
+                      {quoteForm.items.map((item, index) => (
+                        <div key={index} className="grid grid-cols-12 gap-2 mb-2">
+                          <input
+                            type="text"
+                            placeholder="Description *"
+                            value={item.description}
+                            onChange={(e) => updateQuoteItem(index, 'description', e.target.value)}
+                            className="col-span-6 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
+                          />
+                          <input
+                            type="number"
+                            placeholder="Qty"
+                            value={item.quantity}
+                            onChange={(e) => updateQuoteItem(index, 'quantity', parseFloat(e.target.value) || 0)}
+                            className="col-span-2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
+                          />
+                          <input
+                            type="number"
+                            placeholder="Price"
+                            value={item.price}
+                            onChange={(e) => updateQuoteItem(index, 'price', parseFloat(e.target.value) || 0)}
+                            className="col-span-3 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
+                          />
+                          <button
+                            onClick={() => removeQuoteItem(index)}
+                            disabled={quoteForm.items.length === 1}
+                            className="col-span-1 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
+                          >
+                            <Trash2 size={20} />
+                          </button>
+                        </div>
+                      ))}
+                      <button onClick={addQuoteItem} className="text-black hover:text-gray-700 text-sm font-semibold">
+                        + Add Item
+                      </button>
+                    </div>
+
+                    <textarea
+                      placeholder="Notes"
+                      value={quoteForm.notes}
+                      onChange={(e) => setQuoteForm({ ...quoteForm, notes: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black mb-4"
+                      rows="3"
+                    />
+
+                    <div className="flex justify-between items-center">
+                      <div className="text-2xl font-bold text-gray-800">
+                        Total: R{calculateQuoteTotal()}
+                      </div>
+                      <button
+                        onClick={handleGenerateQuote}
+                        disabled={loading}
+                        className="bg-purple-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-purple-700 transition-colors disabled:opacity-50"
+                      >
+                        <FileText size={20} /> {editingQuote ? 'Update' : 'Generate'} Quote
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-4">
+                  {!loading && quotes.length === 0 ? (
+                    <div className="text-center py-12 text-gray-500">
+                      <p className="text-lg">No quotes yet</p>
+                      <p className="text-sm">Generate your first quote</p>
+                    </div>
+                  ) : (
+                    quotes.map(quote => {
+                      const customer = getCustomerById(quote.customer_id);
+                      return (
+                        <div key={quote.id} className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow">
+                          <div className="flex justify-between items-start mb-4">
+                            <div>
+                              <h3 className="text-xl font-bold text-gray-800">{quote.quote_number}</h3>
+                              <p className="text-gray-600">{customer?.name || 'Unknown Customer'}</p>
+                              <p className="text-sm text-gray-500">Issue Date: {quote.issue_date}</p>
+                              <p className="text-sm text-gray-500">Expiry Date: {quote.expiry_date}</p>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-2xl font-bold text-purple-600">R{parseFloat(quote.total).toFixed(2)}</div>
+                              <span className={`inline-block mt-2 px-3 py-1 rounded-full text-sm font-medium ${getQuoteStatusColor(quote.status)}`}>
+                                {quote.status.toUpperCase()}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="border-t pt-4">
+                            <h4 className="font-semibold mb-2">Items:</h4>
+                            {quote.items.map((item, idx) => (
+                              <div key={idx} className="flex justify-between text-sm text-gray-600 mb-1">
+                                <span>{item.description}</span>
+                                <span>{item.quantity} x R{item.price} = R{(item.quantity * item.price).toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex gap-2 mt-4">
+                            <button
+                              onClick={() => exportQuotePDF(quote)}
+                              className="bg-black text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-800 transition-colors"
+                            >
+                              Export PDF
+                            </button>
+                            <button
+                              onClick={() => handleEditQuote(quote)}
+                              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition-colors"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleConvertToInvoice(quote)}
+                              disabled={quote.status === 'accepted'}
+                              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Convert to Invoice
+                            </button>
+                            <button
+                              onClick={() => handleDeleteQuote(quote.id)}
+                              className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </div>
+
+                          {quote.notes && (
+                            <div className="mt-4 text-sm text-gray-600 bg-gray-50 p-3 rounded">
+                              <strong>Notes:</strong> {quote.notes}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
