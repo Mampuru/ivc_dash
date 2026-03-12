@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, FileText, X, Save, Search, LogOut } from 'lucide-react';
+import { Plus, Edit2, Trash2, FileText, X, Save, Search, LogOut, DollarSign, TrendingDown, Tag } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { supabase } from "../config/supabase";
 import LOGO from "../assets/logo.png"
@@ -8,14 +8,18 @@ export default function Home() {
   const [customers, setCustomers] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [quotes, setQuotes] = useState([]);
+  const [expenses, setExpenses] = useState([]);
   const [activeTab, setActiveTab] = useState('customers');
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [editingQuote, setEditingQuote] = useState(null);
+  const [editingExpense, setEditingExpense] = useState(null);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [expenseFilter, setExpenseFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
 
@@ -44,6 +48,29 @@ export default function Home() {
     notes: ''
   });
 
+  const EXPENSE_CATEGORIES = [
+    'Advertising & Marketing',
+    'Bank Charges',
+    'Entertainment',
+    'Equipment & Hardware',
+    'Insurance',
+    'Office Supplies',
+    'Rent & Utilities',
+    'Salaries & Wages',
+    'Software & Subscriptions',
+    'Travel & Transport',
+    'Other'
+  ];
+
+  const [expenseForm, setExpenseForm] = useState({
+    title: '',
+    amount: '',
+    category: '',
+    date: new Date().toISOString().split('T')[0],
+    notes: '',
+    receipt_url: ''
+  });
+
   // Fetch user on mount
   useEffect(() => {
     fetchUser();
@@ -58,6 +85,8 @@ export default function Home() {
     } else if (activeTab === 'quotes') {
       fetchQuotes();
       if (customers.length === 0) fetchCustomers();
+    } else if (activeTab === 'expenses') {
+      fetchExpenses();
     }
   }, [activeTab]);
 
@@ -517,6 +546,171 @@ export default function Home() {
     setEditingInvoice(null);
   };
 
+  /* ------------------ EXPENSE CRUD ------------------ */
+  const fetchExpenses = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('expense')
+      .select('*')
+      .order('date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching expenses:', error);
+      alert('Error loading expenses');
+    } else {
+      setExpenses(data || []);
+    }
+    setLoading(false);
+  };
+
+  const handleAddExpense = async () => {
+    if (!expenseForm.title || !expenseForm.amount || !expenseForm.category) {
+      alert('Title, amount and category are required');
+      return;
+    }
+
+    setLoading(true);
+    const payload = {
+      title: expenseForm.title,
+      amount: parseFloat(expenseForm.amount),
+      category: expenseForm.category,
+      date: expenseForm.date,
+      notes: expenseForm.notes || null,
+      receipt_url: expenseForm.receipt_url || null
+    };
+
+    const { data, error } = await supabase
+      .from('expense')
+      .insert([payload])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error adding expense:', error);
+      alert('Error adding expense: ' + error.message);
+    } else {
+      setExpenses([data, ...expenses]);
+      resetExpenseForm();
+      alert('Expense added successfully!');
+    }
+    setLoading(false);
+  };
+
+  const handleUpdateExpense = async () => {
+    if (!expenseForm.title || !expenseForm.amount || !expenseForm.category) {
+      alert('Title, amount and category are required');
+      return;
+    }
+
+    setLoading(true);
+    const payload = {
+      title: expenseForm.title,
+      amount: parseFloat(expenseForm.amount),
+      category: expenseForm.category,
+      date: expenseForm.date,
+      notes: expenseForm.notes || null,
+      receipt_url: expenseForm.receipt_url || null
+    };
+
+    const { data, error } = await supabase
+      .from('expense')
+      .update(payload)
+      .eq('id', editingExpense.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating expense:', error);
+      alert('Error updating expense: ' + error.message);
+    } else {
+      setExpenses(expenses.map(e => e.id === editingExpense.id ? data : e));
+      resetExpenseForm();
+      alert('Expense updated successfully!');
+    }
+    setLoading(false);
+  };
+
+  const handleDeleteExpense = async (id) => {
+    if (!window.confirm('Delete this expense?')) return;
+
+    setLoading(true);
+    const { error } = await supabase
+      .from('expense')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting expense:', error);
+      alert('Error deleting expense: ' + error.message);
+    } else {
+      setExpenses(expenses.filter(e => e.id !== id));
+      alert('Expense deleted successfully!');
+    }
+    setLoading(false);
+  };
+
+  const handleEditExpense = (expense) => {
+    setEditingExpense(expense);
+    setExpenseForm({
+      title: expense.title,
+      amount: expense.amount.toString(),
+      category: expense.category,
+      date: expense.date,
+      notes: expense.notes || '',
+      receipt_url: expense.receipt_url || ''
+    });
+    setShowExpenseForm(true);
+  };
+
+  const resetExpenseForm = () => {
+    setExpenseForm({
+      title: '',
+      amount: '',
+      category: '',
+      date: new Date().toISOString().split('T')[0],
+      notes: '',
+      receipt_url: ''
+    });
+    setShowExpenseForm(false);
+    setEditingExpense(null);
+  };
+
+  const getExpenseTotals = () => {
+    const filtered = expenseFilter === 'all'
+      ? expenses
+      : expenses.filter(e => e.category === expenseFilter);
+    return filtered.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0).toFixed(2);
+  };
+
+  const getFilteredExpenses = () => {
+    return expenseFilter === 'all'
+      ? expenses
+      : expenses.filter(e => e.category === expenseFilter);
+  };
+
+  const getCategoryTotal = (category) =>
+    expenses
+      .filter(e => e.category === category)
+      .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0)
+      .toFixed(2);
+
+  const getCategoryColor = (category) => {
+    const palette = {
+      'Advertising & Marketing': 'bg-pink-100 text-pink-800',
+      'Bank Charges': 'bg-yellow-100 text-yellow-800',
+      'Entertainment': 'bg-purple-100 text-purple-800',
+      'Equipment & Hardware': 'bg-blue-100 text-blue-800',
+      'Insurance': 'bg-indigo-100 text-indigo-800',
+      'Office Supplies': 'bg-cyan-100 text-cyan-800',
+      'Rent & Utilities': 'bg-orange-100 text-orange-800',
+      'Salaries & Wages': 'bg-green-100 text-green-800',
+      'Software & Subscriptions': 'bg-violet-100 text-violet-800',
+      'Travel & Transport': 'bg-teal-100 text-teal-800',
+      'Other': 'bg-gray-100 text-gray-800'
+    };
+    return palette[category] || 'bg-gray-100 text-gray-800';
+  };
+
   /* ------------------ PDF EXPORT ------------------ */
   const filteredCustomers = customers.filter(c =>
     `${c.name} ${c.email} ${c.company || ''}`.toLowerCase().includes(searchTerm.toLowerCase())
@@ -828,6 +1022,16 @@ const exportInvoicePDF = (invoice) => {
                 }`}
               >
                 Invoices
+              </button>
+              <button
+                onClick={() => setActiveTab('expenses')}
+                className={`px-8 py-4 font-semibold transition-colors ${
+                  activeTab === 'expenses'
+                    ? 'text-orange-600 border-b-2 border-orange-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Expenses
               </button>
             </div>
           </div>
@@ -1365,6 +1569,220 @@ const exportInvoicePDF = (invoice) => {
                         </div>
                       );
                     })
+                  )}
+                </div>
+              </div>
+            )}
+            {activeTab === 'expenses' && (
+              <div>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-xl p-5 shadow">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-orange-100 text-sm font-medium">Total Expenses</p>
+                        <p className="text-3xl font-bold mt-1">R{expenses.reduce((s, e) => s + parseFloat(e.amount || 0), 0).toFixed(2)}</p>
+                      </div>
+                      <TrendingDown size={40} className="text-orange-200" />
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-br from-gray-700 to-gray-900 text-white rounded-xl p-5 shadow">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-gray-300 text-sm font-medium">Total Records</p>
+                        <p className="text-3xl font-bold mt-1">{expenses.length}</p>
+                      </div>
+                      <DollarSign size={40} className="text-gray-400" />
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-br from-blue-500 to-blue-700 text-white rounded-xl p-5 shadow">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-blue-100 text-sm font-medium">Categories Used</p>
+                        <p className="text-3xl font-bold mt-1">{new Set(expenses.map(e => e.category)).size}</p>
+                      </div>
+                      <Tag size={40} className="text-blue-200" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Category Breakdown */}
+                {expenses.length > 0 && (
+                  <div className="bg-gray-50 rounded-xl p-5 mb-6 border border-gray-200">
+                    <h3 className="font-bold text-gray-700 mb-3">Spending by Category</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {EXPENSE_CATEGORIES.filter(cat => expenses.some(e => e.category === cat)).map(cat => (
+                        <div key={cat} className={`px-3 py-1.5 rounded-full text-sm font-medium flex items-center gap-2 ${getCategoryColor(cat)}`}>
+                          <span>{cat}</span>
+                          <span className="font-bold">R{getCategoryTotal(cat)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Header + Add Button */}
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-2xl font-bold text-gray-800">Expenses</h2>
+                    <select
+                      value={expenseFilter}
+                      onChange={(e) => setExpenseFilter(e.target.value)}
+                      className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
+                    >
+                      <option value="all">All Categories</option>
+                      {EXPENSE_CATEGORIES.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                    {expenseFilter !== 'all' && (
+                      <span className="text-sm text-gray-600 font-medium">
+                        Filtered total: <strong>R{getExpenseTotals()}</strong>
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setEditingExpense(null);
+                      resetExpenseForm();
+                      setShowExpenseForm(true);
+                    }}
+                    className="bg-orange-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-orange-700 transition-colors"
+                  >
+                    <Plus size={20} /> Add Expense
+                  </button>
+                </div>
+
+                {/* Expense Form */}
+                {showExpenseForm && (
+                  <div className="bg-gray-50 p-6 rounded-lg mb-6 border-2 border-orange-200">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-xl font-bold text-gray-800">
+                        {editingExpense ? 'Edit Expense' : 'New Expense'}
+                      </h3>
+                      <button onClick={resetExpenseForm} className="text-gray-500 hover:text-gray-700">
+                        <X size={24} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <input
+                        type="text"
+                        placeholder="Expense Title *"
+                        value={expenseForm.title}
+                        onChange={(e) => setExpenseForm({ ...expenseForm, title: e.target.value })}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Amount (R) *"
+                        value={expenseForm.amount}
+                        onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                        min="0"
+                        step="0.01"
+                      />
+                      <select
+                        value={expenseForm.category}
+                        onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                      >
+                        <option value="">Select Category *</option>
+                        {EXPENSE_CATEGORIES.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="date"
+                        value={expenseForm.date}
+                        onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                      />
+                      <input
+                        type="url"
+                        placeholder="Receipt URL (optional)"
+                        value={expenseForm.receipt_url}
+                        onChange={(e) => setExpenseForm({ ...expenseForm, receipt_url: e.target.value })}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 col-span-2"
+                      />
+                    </div>
+
+                    <textarea
+                      placeholder="Notes (optional)"
+                      value={expenseForm.notes}
+                      onChange={(e) => setExpenseForm({ ...expenseForm, notes: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 mb-4"
+                      rows="2"
+                    />
+
+                    <button
+                      onClick={editingExpense ? handleUpdateExpense : handleAddExpense}
+                      disabled={loading}
+                      className="bg-orange-600 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-orange-700 transition-colors disabled:opacity-50"
+                    >
+                      <Save size={20} /> {editingExpense ? 'Update' : 'Save'} Expense
+                    </button>
+                  </div>
+                )}
+
+                {/* Expenses List */}
+                <div className="grid gap-4">
+                  {!loading && getFilteredExpenses().length === 0 ? (
+                    <div className="text-center py-12 text-gray-500">
+                      <TrendingDown size={48} className="mx-auto mb-3 text-gray-300" />
+                      <p className="text-lg">No expenses yet</p>
+                      <p className="text-sm">Add your first expense to start tracking</p>
+                    </div>
+                  ) : (
+                    getFilteredExpenses().map(expense => (
+                      <div key={expense.id} className="bg-white border border-gray-200 rounded-lg p-5 hover:shadow-lg transition-shadow">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-1">
+                              <h3 className="text-lg font-bold text-gray-800">{expense.title}</h3>
+                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${getCategoryColor(expense.category)}`}>
+                                {expense.category}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-500">📅 {expense.date}</p>
+                            {expense.notes && (
+                              <p className="text-sm text-gray-600 mt-1 bg-gray-50 px-3 py-1.5 rounded">
+                                {expense.notes}
+                              </p>
+                            )}
+                            {expense.receipt_url && (
+                              <a
+                                href={expense.receipt_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm text-blue-600 hover:underline mt-1 inline-block"
+                              >
+                                🧾 View Receipt
+                              </a>
+                            )}
+                          </div>
+                          <div className="flex items-start gap-3 ml-4">
+                            <div className="text-2xl font-bold text-orange-600 text-right">
+                              R{parseFloat(expense.amount).toFixed(2)}
+                            </div>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => handleEditExpense(expense)}
+                                className="p-2 text-black hover:bg-gray-100 rounded-lg transition-colors"
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteExpense(expense.id)}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               </div>
